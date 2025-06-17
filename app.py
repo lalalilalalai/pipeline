@@ -10,6 +10,7 @@ from sklearn.impute import SimpleImputer
 from xgboost import XGBRegressor
 from contextlib import asynccontextmanager
 import os
+from sanitize import check_csv_injection, cipher, clean_input, hash_price, encrypt_price, decrypt_price, decrypt_ram
 
 model = None
 model_path = './laptop_price_model.pkl'
@@ -61,6 +62,29 @@ async def predict(file: UploadFile = File(...)):
     global model 
     content = await file.read()
     df = pd.read_csv(BytesIO(content))
+
+    check_csv_injection(df)
+    df = df.applymap(lambda x: clean_input(str(x)) if isinstance(x, str) else x)
+    print("Фильтрация данных завершена.")
+    
+    df['Price_hashed'] = df['Price'].apply(hash_price)
+    print("Столбец с хешированными ценами добавлен.")
+
+    df['Price_Encrypted'] = df['Price'].apply(encrypt_price)
+    df['RAM_Size_Encrypted'] = df['RAM_Size'].apply(encrypt_price)
+    print("Столбец с зашифрованными ценами добавлен.")
+
+    # Выводим 5 расшифрованных значений RAM
+    print("\nПримеры расшифрованных значений RAM:")
+    for encrypted_value in df['RAM_Size_Encrypted'].head(5):
+        decrypted_value = decrypt_ram(encrypted_value)
+        print(f"Зашифровано: {encrypted_value[:30]}... → Расшифровано: {decrypted_value}")
+
+    # Сохранение обработанных данных
+    output_path = "Laptop_price_secured.csv"
+    df.to_csv(output_path, index=False)
+    print(f"Обработанный файл сохранен: {output_path}")
+
     predictions = model.predict(df)
     return {"predictions": predictions.tolist()}
 
