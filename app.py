@@ -1,4 +1,4 @@
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, HTTPException
 import pandas as pd
 import joblib
 from io import BytesIO
@@ -58,9 +58,16 @@ app = FastAPI(lifespan=lifespan)
 
 @app.post("/predict")
 async def predict(file: UploadFile = File(...)):
-    global model 
-    content = await file.read()
-    df = pd.read_csv(BytesIO(content))
+    global model
+    if model is None:
+        raise HTTPException(status_code=503, detail="Model not loaded")
+    try:
+        content = await file.read()
+        df = pd.read_csv(BytesIO(content))
+    except pd.errors.ParserError:
+        raise HTTPException(status_code=400, detail="Invalid CSV file")
+    finally:
+        await file.close()
     predictions = model.predict(df)
     return {"predictions": predictions.tolist()}
 
